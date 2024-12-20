@@ -61,7 +61,7 @@ def array_corners(xys):
     
     return x1, y1, x2, y2, x3, y3, x4, y4
 
-@app.post("/process-image/")
+@app.post("/process-image")
 async def process_image(car_image: UploadFile = File(...), logo_image: UploadFile = File(...)):
     # Read the images
     I = np.array(Image.open(BytesIO(await car_image.read())))
