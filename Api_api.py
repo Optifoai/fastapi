@@ -8,19 +8,19 @@ from skimage import measure
 from io import BytesIO
 from PIL import Image
 from fastapi.responses import StreamingResponse
-#from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 app = FastAPI()
 
 # Enable CORS
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Adjust to specify allowed origins
-#     allow_credentials=True,
-#     allow_methods=["*"],  # Adjust to specify allowed methods (e.g., ['GET', 'POST'])
-#     allow_headers=["*"],  # Adjust to specify allowed headers
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust to specify allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Adjust to specify allowed methods (e.g., ['GET', 'POST'])
+    allow_headers=["*"],  # Adjust to specify allowed headers
+)
 
 # Add HTTPS redirect middleware
 app.add_middleware(HTTPSRedirectMiddleware)
