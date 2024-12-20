@@ -9,7 +9,7 @@ from io import BytesIO
 from PIL import Image
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+#from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 app = FastAPI()
 
@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 # Add HTTPS redirect middleware
-app.add_middleware(HTTPSRedirectMiddleware)
+#app.add_middleware(HTTPSRedirectMiddleware)
 
 # Load the YOLO model
 pt_name = 'best.pt'
