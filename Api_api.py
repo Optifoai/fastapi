@@ -8,8 +8,18 @@ from skimage import measure
 from io import BytesIO
 from PIL import Image
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust to specify allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Adjust to specify allowed methods (e.g., ['GET', 'POST'])
+    allow_headers=["*"],  # Adjust to specify allowed headers
+)
 
 # Load the YOLO model
 pt_name = 'best.pt'
