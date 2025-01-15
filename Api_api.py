@@ -8,23 +8,19 @@ from skimage import measure
 from io import BytesIO
 from PIL import Image
 from fastapi.responses import StreamingResponse
+
 from fastapi.middleware.cors import CORSMiddleware
-#from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 app = FastAPI()
 
-# Enable CORS
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust to specify allowed origins
+    allow_origins=["*"],  # Replace "*" with specific domains for production
     allow_credentials=True,
-    allow_methods=["*"],  # Adjust to specify allowed methods (e.g., ['GET', 'POST'])
-    allow_headers=["*"],  # Adjust to specify allowed headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# Add HTTPS redirect middleware
-#app.add_middleware(HTTPSRedirectMiddleware)
-
 # Load the YOLO model
 pt_name = 'best.pt'
 pt_yv8n = YOLO(pt_name)
@@ -61,7 +57,7 @@ def array_corners(xys):
     
     return x1, y1, x2, y2, x3, y3, x4, y4
 
-@app.post("/process-image")
+@app.post("/process-image/")
 async def process_image(car_image: UploadFile = File(...), logo_image: UploadFile = File(...)):
     # Read the images
     I = np.array(Image.open(BytesIO(await car_image.read())))
