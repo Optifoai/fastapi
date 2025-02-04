@@ -61,7 +61,7 @@ def array_corners(xys):
     
     return x1, y1, x2, y2, x3, y3, x4, y4
 
-@app.post("/process/")
+@app.post("/process-image")
 async def process_images(car_image: UploadFile = File(...), logo_image: UploadFile = File(...)):
     try:
         # Read images directly in BGR format using cv2
