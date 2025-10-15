@@ -1,0 +1,526 @@
+# import cv2
+# import numpy as np
+# from PIL import ImageFont, ImageDraw, Image
+# import os
+# import json
+# import urllib.request
+# import uuid
+# import shutil
+
+# # ========= CONFIG =========
+
+# background_video_path = "D:/project and poc/plate_car/background.mp4"
+# font_path = "LoveDays.ttf"
+# audio_file_path = "music.mp3"
+
+# # Reel constants
+# reel_width, reel_height = 1080, 1920
+# fps = 30
+# slide_duration = 3
+# fade_duration = 0.5
+# # ==========================
+
+# def download_image(url, save_path):
+#     """Download image from URL"""
+#     try:
+#         urllib.request.urlretrieve(url, save_path)
+#         return True
+#     except Exception as e:
+#         print(f"Error downloading {url}: {e}")
+#         return False
+
+# def overlay_image_alpha(background, overlay, x, y):
+#     """ Overlay RGBA image onto BGR background. """
+#     overlay_h, overlay_w, _ = overlay.shape
+#     bg_h, bg_w, _ = background.shape
+
+#     if x >= bg_w or y >= bg_h:
+#         return background
+#     if x + overlay_w > bg_w:
+#         overlay_w = bg_w - x
+#     if y + overlay_h > bg_h:
+#         overlay_h = bg_h - y
+
+#     overlay_region = overlay[:overlay_h, :overlay_w]
+#     alpha_channel = overlay_region[:, :, 3] / 255.0
+#     alpha_channel = cv2.merge((alpha_channel, alpha_channel, alpha_channel))
+
+#     background_region = background[y:y + overlay_h, x:x + overlay_w]
+#     blended_region = alpha_channel * overlay_region[:, :, :3] + (1 - alpha_channel) * background_region
+#     background[y:y + overlay_h, x:x + overlay_w] = blended_region.astype(np.uint8)
+
+#     return background
+
+# def resize_and_center(image, target_size):
+#     """Resize car image with transparency and center inside canvas."""
+#     target_width, target_height = target_size
+#     h, w = image.shape[:2]
+
+#     scale = min(target_width / w, target_height / h)
+#     new_w, new_h = int(w * scale), int(h * scale)
+#     resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+#     if resized_image.shape[2] == 3:
+#         alpha_channel = np.ones((new_h, new_w), dtype=np.uint8) * 255
+#         resized_image = np.dstack((resized_image, alpha_channel))
+
+#     new_image = np.zeros((target_height, target_width, 4), dtype=np.uint8)
+#     x_offset = (target_width - new_w) // 2
+#     y_offset = (target_height - new_h) // 2
+#     new_image[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized_image
+#     return new_image
+
+# def add_multiline_text(frame, text, font_path, font_size=60, color=(0, 0, 0)):
+#     """Add centered multiline text with TTF font."""
+#     width, height = frame.shape[1], frame.shape[0]
+#     frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert("RGBA")
+#     overlay_pil = Image.new("RGBA", frame_pil.size, (0, 0, 0, 0))
+
+#     draw = ImageDraw.Draw(overlay_pil)
+#     font = ImageFont.truetype(font_path, font_size)
+
+#     words = text.split(" ")
+#     lines, current_line = [], []
+#     max_line_width = width * 0.8
+
+#     for word in words:
+#         test_line = current_line + [word]
+#         test_string = " ".join(test_line)
+#         bbox = draw.textbbox((0, 0), test_string, font=font)
+#         if bbox[2] - bbox[0] > max_line_width:
+#             lines.append(" ".join(current_line))
+#             current_line = [word]
+#         else:
+#             current_line.append(word)
+#     if current_line:
+#         lines.append(" ".join(current_line))
+
+#     bbox = draw.textbbox((0, 0), "Test", font=font)
+#     text_height = bbox[3] - bbox[1]
+#     total_height = len(lines) * text_height + (len(lines) - 1) * 10
+#     y_offset = 400
+
+#     for line in lines:
+#         bbox = draw.textbbox((0, 0), line, font=font)
+#         text_width = bbox[2] - bbox[0]
+#         x = (width - text_width) // 2
+#         draw.text((x, y_offset), line, font=font, fill=color + (255,))
+#         y_offset += text_height + 10
+
+#     blended = Image.alpha_composite(frame_pil, overlay_pil)
+#     return cv2.cvtColor(np.array(blended.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+# def resize_to_fill(image, target_width, target_height):
+#     """Resize background to fill screen (crop if needed)."""
+#     h, w, _ = image.shape
+#     scale = max(target_width / w, target_height / h)
+#     new_w, new_h = int(w * scale), int(h * scale)
+#     resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+#     crop_x = (new_w - target_width) // 2
+#     crop_y = (new_h - target_height) // 2
+#     return resized_image[crop_y:crop_y + target_height, crop_x:crop_x + target_width]
+
+# def generate_video_with_audio(car_images, text_data, folder_name):
+#     """Generate video with audio - main processing function"""
+#     background_cap = cv2.VideoCapture(background_video_path)
+#     if not background_cap.isOpened():
+#         raise Exception("Could not open background video")
+    
+#     # Create temporary video file
+#     temp_video_path = f"temp_{uuid.uuid4().hex[:8]}.mp4"
+#     video_writer = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (reel_width, reel_height))
+
+#     if not video_writer.isOpened():
+#         raise Exception("Could not create video writer")
+
+#     # Generate video frames
+#     for i, img_name in enumerate(car_images):
+#         car_path = os.path.join(folder_name, img_name)
+#         car_image = cv2.imread(car_path, cv2.IMREAD_UNCHANGED)
+#         if car_image is None:
+#             print(f"Could not load image: {car_path}")
+#             continue
+
+#         car_resized = resize_and_center(car_image, (reel_width, reel_height))
+#         total_frames = int(slide_duration * fps)
+#         fade_frames = int(fade_duration * fps)
+
+#         for frame_idx in range(total_frames):
+#             ret, bg_frame = background_cap.read()
+#             if not ret:
+#                 background_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+#                 ret, bg_frame = background_cap.read()
+#             bg_frame = resize_to_fill(bg_frame, reel_width, reel_height)
+
+#             frame = overlay_image_alpha(bg_frame.copy(), car_resized, 0, 0)
+#             frame = add_multiline_text(frame, text_data[min(i, len(text_data)-1)], font_path)
+
+#             if i < len(car_images) - 1 and frame_idx > total_frames - fade_frames:
+#                 next_car_path = os.path.join(folder_name, car_images[i + 1])
+#                 next_car = cv2.imread(next_car_path, cv2.IMREAD_UNCHANGED)
+#                 if next_car is not None:
+#                     next_car_resized = resize_and_center(next_car, (reel_width, reel_height))
+#                     next_frame = overlay_image_alpha(bg_frame.copy(), next_car_resized, 0, 0)
+#                     next_frame = add_multiline_text(next_frame, text_data[min(i+1, len(text_data)-1)], font_path)
+#                     alpha = (frame_idx - (total_frames - fade_frames)) / fade_frames
+#                     frame = cv2.addWeighted(frame, 1 - alpha, next_frame, alpha, 0)
+
+#             video_writer.write(frame)
+
+#     background_cap.release()
+#     video_writer.release()
+
+#     # Add audio to create final video
+#     final_video_path = f"final_{uuid.uuid4().hex[:8]}.mp4"
+#     try:
+#         from moviepy.editor import VideoFileClip, AudioFileClip
+        
+#         video_clip = VideoFileClip(temp_video_path)
+#         audio_clip = AudioFileClip(audio_file_path)
+        
+#         if audio_clip.duration > video_clip.duration:
+#             audio_clip = audio_clip.subclip(0, video_clip.duration)
+#         else:
+#             audio_clip = audio_clip.loop(duration=video_clip.duration)
+        
+#         audio_clip = audio_clip.volumex(0.7)
+#         final_clip = video_clip.set_audio(audio_clip)
+#         final_clip.write_videofile(final_video_path, codec='libx264', audio_codec='aac')
+        
+#         video_clip.close()
+#         audio_clip.close()
+#         final_clip.close()
+        
+#     except ImportError:
+#         # If moviepy not available, just rename temp file
+#         os.rename(temp_video_path, final_video_path)
+#         final_video_path = temp_video_path
+#     except Exception as e:
+#         print(f"Audio processing error: {e}")
+#         os.rename(temp_video_path, final_video_path)
+#         final_video_path = temp_video_path
+    
+#     # Cleanup temp file
+#     if os.path.exists(temp_video_path) and temp_video_path != final_video_path:
+#         os.remove(temp_video_path)
+    
+#     return final_video_path
+
+# def process_car_reel(image_urls, text_data):
+#     """Main function to process car reel with images and text"""
+#     # Validate input
+#     if not image_urls:
+#         raise Exception("No image URLs provided")
+    
+#     if not text_data:
+#         raise Exception("No text data provided")
+    
+#     # Create unique folder for this request
+#     folder_name = f"car_images_{uuid.uuid4().hex[:8]}"
+#     os.makedirs(folder_name, exist_ok=True)
+    
+#     # Download images
+#     car_images = []
+#     for i, url in enumerate(image_urls):
+#         img_path = os.path.join(folder_name, f"car_{i}.png")
+#         if download_image(url, img_path):
+#             car_images.append(f"car_{i}.png")
+#         else:
+#             print(f"Failed to download image: {url}")
+    
+#     if not car_images:
+#         raise Exception("No images downloaded successfully")
+    
+#     # Generate video with audio
+#     final_video_path = generate_video_with_audio(car_images, text_data, folder_name)
+    
+#     # Cleanup downloaded images folder
+#     if os.path.exists(folder_name):
+#         shutil.rmtree(folder_name)
+    
+#     return {
+#         "status": "success", 
+#         "message": "Video generated with audio", 
+#         "output_path": final_video_path,
+#         "images_processed": len(car_images),
+#         "text_used": text_data
+#     }
+
+
+
+import cv2
+import numpy as np
+from PIL import ImageFont, ImageDraw, Image
+import os
+import json
+import urllib.request
+import uuid
+import shutil
+
+# ========= CONFIG =========
+background_video_path = "background.mp4"
+font_path = "LoveDays.ttf"
+audio_file_path = "music.mp3"
+
+# Reel constants
+reel_width, reel_height = 1080, 1920
+fps = 30
+slide_duration = 3
+fade_duration = 0.5
+# ==========================
+
+# Create public videos folder for downloadable content
+os.makedirs("public/videos", exist_ok=True)
+
+def download_image(url, save_path):
+    """Download image from URL"""
+    try:
+        urllib.request.urlretrieve(url, save_path)
+        return True
+    except Exception as e:
+        print(f"Error downloading {url}: {e}")
+        return False
+
+def overlay_image_alpha(background, overlay, x, y):
+    """ Overlay RGBA image onto BGR background. """
+    overlay_h, overlay_w, _ = overlay.shape
+    bg_h, bg_w, _ = background.shape
+
+    if x >= bg_w or y >= bg_h:
+        return background
+    if x + overlay_w > bg_w:
+        overlay_w = bg_w - x
+    if y + overlay_h > bg_h:
+        overlay_h = bg_h - y
+
+    overlay_region = overlay[:overlay_h, :overlay_w]
+    alpha_channel = overlay_region[:, :, 3] / 255.0
+    alpha_channel = cv2.merge((alpha_channel, alpha_channel, alpha_channel))
+
+    background_region = background[y:y + overlay_h, x:x + overlay_w]
+    blended_region = alpha_channel * overlay_region[:, :, :3] + (1 - alpha_channel) * background_region
+    background[y:y + overlay_h, x:x + overlay_w] = blended_region.astype(np.uint8)
+
+    return background
+
+def resize_and_center(image, target_size):
+    """Resize car image with transparency and center inside canvas."""
+    target_width, target_height = target_size
+    h, w = image.shape[:2]
+
+    scale = min(target_width / w, target_height / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    if resized_image.shape[2] == 3:
+        alpha_channel = np.ones((new_h, new_w), dtype=np.uint8) * 255
+        resized_image = np.dstack((resized_image, alpha_channel))
+
+    new_image = np.zeros((target_height, target_width, 4), dtype=np.uint8)
+    x_offset = (target_width - new_w) // 2
+    y_offset = (target_height - new_h) // 2
+    new_image[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized_image
+    return new_image
+
+def add_multiline_text(frame, text, font_path, font_size=60, color=(0, 0, 0)):
+    """Add centered multiline text with TTF font."""
+    width, height = frame.shape[1], frame.shape[0]
+    frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert("RGBA")
+    overlay_pil = Image.new("RGBA", frame_pil.size, (0, 0, 0, 0))
+
+    draw = ImageDraw.Draw(overlay_pil)
+    font = ImageFont.truetype(font_path, font_size)
+
+    words = text.split(" ")
+    lines, current_line = [], []
+    max_line_width = width * 0.8
+
+    for word in words:
+        test_line = current_line + [word]
+        test_string = " ".join(test_line)
+        bbox = draw.textbbox((0, 0), test_string, font=font)
+        if bbox[2] - bbox[0] > max_line_width:
+            lines.append(" ".join(current_line))
+            current_line = [word]
+        else:
+            current_line.append(word)
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    bbox = draw.textbbox((0, 0), "Test", font=font)
+    text_height = bbox[3] - bbox[1]
+    total_height = len(lines) * text_height + (len(lines) - 1) * 10
+    y_offset = 400
+
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        text_width = bbox[2] - bbox[0]
+        x = (width - text_width) // 2
+        draw.text((x, y_offset), line, font=font, fill=color + (255,))
+        y_offset += text_height + 10
+
+    blended = Image.alpha_composite(frame_pil, overlay_pil)
+    return cv2.cvtColor(np.array(blended.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+def resize_to_fill(image, target_width, target_height):
+    """Resize background to fill screen (crop if needed)."""
+    h, w, _ = image.shape
+    scale = max(target_width / w, target_height / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    crop_x = (new_w - target_width) // 2
+    crop_y = (new_h - target_height) // 2
+    return resized_image[crop_y:crop_y + target_height, crop_x:crop_x + target_width]
+
+def generate_video_with_audio(car_images, text_data, folder_name):
+    """Generate video with audio - main processing function"""
+    background_cap = cv2.VideoCapture(background_video_path)
+    if not background_cap.isOpened():
+        raise Exception("Could not open background video")
+    
+    # Create temporary video file in public/videos folder
+    temp_video_path = os.path.join("public/videos", f"temp_{uuid.uuid4().hex[:8]}.mp4")
+    video_writer = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (reel_width, reel_height))
+
+    if not video_writer.isOpened():
+        raise Exception("Could not create video writer")
+
+    # Generate video frames
+    for i, img_name in enumerate(car_images):
+        car_path = os.path.join(folder_name, img_name)
+        car_image = cv2.imread(car_path, cv2.IMREAD_UNCHANGED)
+        if car_image is None:
+            print(f"Could not load image: {car_path}")
+            continue
+
+        car_resized = resize_and_center(car_image, (reel_width, reel_height))
+        total_frames = int(slide_duration * fps)
+        fade_frames = int(fade_duration * fps)
+
+        for frame_idx in range(total_frames):
+            ret, bg_frame = background_cap.read()
+            if not ret:
+                background_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, bg_frame = background_cap.read()
+            bg_frame = resize_to_fill(bg_frame, reel_width, reel_height)
+
+            frame = overlay_image_alpha(bg_frame.copy(), car_resized, 0, 0)
+            frame = add_multiline_text(frame, text_data[min(i, len(text_data)-1)], font_path)
+
+            if i < len(car_images) - 1 and frame_idx > total_frames - fade_frames:
+                next_car_path = os.path.join(folder_name, car_images[i + 1])
+                next_car = cv2.imread(next_car_path, cv2.IMREAD_UNCHANGED)
+                if next_car is not None:
+                    next_car_resized = resize_and_center(next_car, (reel_width, reel_height))
+                    next_frame = overlay_image_alpha(bg_frame.copy(), next_car_resized, 0, 0)
+                    next_frame = add_multiline_text(next_frame, text_data[min(i+1, len(text_data)-1)], font_path)
+                    alpha = (frame_idx - (total_frames - fade_frames)) / fade_frames
+                    frame = cv2.addWeighted(frame, 1 - alpha, next_frame, alpha, 0)
+
+            video_writer.write(frame)
+
+    background_cap.release()
+    video_writer.release()
+
+    # Add audio to create final video - AUDIO IS MANDATORY
+    final_video_path = os.path.join("public/videos", f"car_reel_{uuid.uuid4().hex[:8]}.mp4")
+    
+    # Check if audio file exists - THIS IS REQUIRED
+    if not os.path.exists(audio_file_path):
+        raise Exception(f"Audio file not found: {audio_file_path}. Audio is required for video generation.")
+    
+    try:
+        from moviepy.editor import VideoFileClip, AudioFileClip
+        
+        print("🎵 Adding background audio...")
+        video_clip = VideoFileClip(temp_video_path)
+        audio_clip = AudioFileClip(audio_file_path)
+        
+        # Set audio to match video duration
+        if audio_clip.duration > video_clip.duration:
+            audio_clip = audio_clip.subclip(0, video_clip.duration)
+        else:
+            # Loop audio if shorter than video
+            audio_clip = audio_clip.loop(duration=video_clip.duration)
+        
+        # Set audio volume (70%)
+        audio_clip = audio_clip.volumex(0.7)
+        
+        # Combine video with audio
+        final_clip = video_clip.set_audio(audio_clip)
+        
+        # Write final video with audio
+        final_clip.write_videofile(
+            final_video_path, 
+            codec='libx264', 
+            audio_codec='aac',
+            verbose=False,
+            logger=None
+        )
+        
+        # Clean up
+        video_clip.close()
+        audio_clip.close()
+        final_clip.close()
+        
+        print("✅ Audio added successfully!")
+        
+    except ImportError:
+        raise Exception("moviepy not installed. Install with: pip install moviepy")
+    except Exception as e:
+        raise Exception(f"Error adding audio: {e}")
+    
+    # Cleanup temp file
+    if os.path.exists(temp_video_path):
+        os.remove(temp_video_path)
+    
+    return final_video_path
+
+def process_car_reel(image_urls, text_data):
+    """Main function to process car reel with images and text"""
+    # Validate input
+    if not image_urls:
+        raise Exception("No image URLs provided")
+    
+    if not text_data:
+        raise Exception("No text data provided")
+    
+    # Create unique folder for this request
+    folder_name = f"car_images_{uuid.uuid4().hex[:8]}"
+    os.makedirs(folder_name, exist_ok=True)
+    
+    # Download images
+    car_images = []
+    for i, url in enumerate(image_urls):
+        img_path = os.path.join(folder_name, f"car_{i}.png")
+        if download_image(url, img_path):
+            car_images.append(f"car_{i}.png")
+            print(f"✅ Downloaded image: {url}")
+        else:
+            print(f"❌ Failed to download image: {url}")
+    
+    if not car_images:
+        raise Exception("No images downloaded successfully")
+    
+    print(f"🎬 Generating video with {len(car_images)} images...")
+    
+    # Generate video with audio (AUDIO IS MANDATORY)
+    final_video_path = generate_video_with_audio(car_images, text_data, folder_name)
+    
+    # Cleanup downloaded images folder
+    if os.path.exists(folder_name):
+        shutil.rmtree(folder_name)
+    
+    # Get public URL for the video
+    video_filename = os.path.basename(final_video_path)
+    public_url = f"/videos/{video_filename}"
+    
+    return {
+        "status": "success", 
+        "message": "Video generated successfully with audio", 
+        "output_path": final_video_path,
+        "video_filename": video_filename,
+        "download_url": public_url,
+        "images_processed": len(car_images),
+        "text_used": text_data
+    }
