@@ -1,0 +1,104 @@
+{
+  "data": {
+    "registration": "AP15244",
+    "vin": "SB1EG76L50E099112",
+    "type": "Personbil",
+    "brand": "TOYOTA",
+    "model": "AVENSIS",
+    "version": "1.8 VVT-i stationcar",
+    "type_name": "T27",
+    "fuel_type": "Benzin",
+    "registration_status": "Afmeldt",
+    "registration_status_updated_date": "2015-01-16",
+    "first_registration_date": "2014-07-23",
+    "expire_date": "2014-10-29",
+    "status_updated_date": "2014-10-29",
+    "model_year": 2014,
+    "total_weight": 2000,
+    "vehicle_weight": 0,
+    "technical_total_weight": 2000,
+    "coupling": false,
+    "towing_weight": 500,
+    "towing_weight_brakes": 1500,
+    "minimum_weight": 1485,
+    "gross_combination_weight": 3500,
+    "engine_power": 108,
+    "fuel_efficiency": 15.2,
+    "engine_displacement": 1798,
+    "engine_cylinders": 4,
+    "engine_code": "2ZR",
+    "category": "M1",
+    "last_inspection_date": null,
+    "last_inspection_result": "",
+    "last_inspection_odometer": 0,
+    "type_approval_code": "e11*2001\/116*0331*07",
+    "top_speed": 200,
+    "doors": 4,
+    "minimum_seats": 5,
+    "maximum_seats": null,
+    "wheels": "1. aksel: 215\/55R17 94W 17X7J. 2. aksel: 215\/55R17 94W 17X7J",
+    "extra_equipment": "El-sideruder for, Airconditioning, 60\/40 splitbags\u00e6de, Musikanl\u00e6g med CD og 6 h\u00f8jtalere, Alu-f\u00e6lge , S\u00e6devarme, for, Tagr\u00e6ling (stationcar), Forlygtevaskere, Betjening af musikanl\u00e6g fra rattet, Centerkonsol, Elsidespejle med blinklys og varme , Emergency Brake Signal, Konsolboks, for, mp3 -og WMA-kombatibelt, 1F7 SILVER ME.",
+    "axles": "2",
+    "drive_axles": "1",
+    "wheelbase": 2700,
+    "leasing_period_start": null,
+    "leasing_period_end": null,
+    "vehicle_id": 9000000000861467,
+    "use": {
+      "id": 1,
+      "name": "Privat personk\u00f8rsel"
+    },
+    "color": {
+      "id": 3,
+      "name": "Gr\u00e5"
+    },
+    "body_type": {
+      "id": 106,
+      "name": "MPV"
+    },
+    "dispensations": [],
+    "permits": [
+      {
+        "id": 19,
+        "name": "Udlejning Uden F\u00f8rer"
+      }
+    ],
+    "equipment": [
+      {
+        "id": 506,
+        "name": "ABS bremser",
+        "quantity": 1
+      },
+      {
+        "id": 9901,
+        "name": "Airbags",
+        "quantity": 6
+      },
+      {
+        "id": 717,
+        "name": "ESP (Elektronisk Stabiliserings Program)",
+        "quantity": 1
+      },
+      {
+        "id": 999,
+        "name": "Integreret barnes\u00e6de",
+        "quantity": 0
+      },
+      {
+        "id": 6029,
+        "name": "Radio",
+        "quantity": 1
+      },
+      {
+        "id": 6028,
+        "name": "Selealarm",
+        "quantity": 3
+      }
+    ],
+    "ncap_five": true,
+    "airbags": 6,
+    "integrated_child_seats": 0,
+    "seat_belt_alarms": 3,
+    "euronorm": "Euro V"
+  }
+}
