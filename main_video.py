@@ -256,7 +256,9 @@ import json
 import urllib.request
 import uuid
 import shutil
-
+from aws_config import * 
+import time
+import datetime
 # ========= CONFIG =========
 background_video_path = "background.mp4"
 font_path = "LoveDays.ttf"
@@ -371,15 +373,18 @@ def resize_to_fill(image, target_width, target_height):
     crop_x = (new_w - target_width) // 2
     crop_y = (new_h - target_height) // 2
     return resized_image[crop_y:crop_y + target_height, crop_x:crop_x + target_width]
-
-def generate_video_with_audio(car_images, text_data, folder_name):
+def generate_video_with_audio(car_images, text_data, temp_folder):
     """Generate video with audio - main processing function"""
     background_cap = cv2.VideoCapture(background_video_path)
     if not background_cap.isOpened():
         raise Exception("Could not open background video")
     
-    # Create temporary video file in public/videos folder
-    temp_video_path = os.path.join("public/videos", f"temp_{uuid.uuid4().hex[:8]}.mp4")
+    # Generate timestamp-based filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    final_video_path = f"car_reel_{timestamp}.mp4"
+    
+    # Create temporary video file
+    temp_video_path = f"temp_video.mp4"
     video_writer = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (reel_width, reel_height))
 
     if not video_writer.isOpened():
@@ -387,7 +392,7 @@ def generate_video_with_audio(car_images, text_data, folder_name):
 
     # Generate video frames
     for i, img_name in enumerate(car_images):
-        car_path = os.path.join(folder_name, img_name)
+        car_path = os.path.join(temp_folder, img_name)
         car_image = cv2.imread(car_path, cv2.IMREAD_UNCHANGED)
         if car_image is None:
             print(f"Could not load image: {car_path}")
@@ -408,7 +413,7 @@ def generate_video_with_audio(car_images, text_data, folder_name):
             frame = add_multiline_text(frame, text_data[min(i, len(text_data)-1)], font_path)
 
             if i < len(car_images) - 1 and frame_idx > total_frames - fade_frames:
-                next_car_path = os.path.join(folder_name, car_images[i + 1])
+                next_car_path = os.path.join(temp_folder, car_images[i + 1])
                 next_car = cv2.imread(next_car_path, cv2.IMREAD_UNCHANGED)
                 if next_car is not None:
                     next_car_resized = resize_and_center(next_car, (reel_width, reel_height))
@@ -423,9 +428,6 @@ def generate_video_with_audio(car_images, text_data, folder_name):
     video_writer.release()
 
     # Add audio to create final video - AUDIO IS MANDATORY
-    final_video_path = os.path.join("public/videos", f"car_reel_{uuid.uuid4().hex[:8]}.mp4")
-    
-    # Check if audio file exists - THIS IS REQUIRED
     if not os.path.exists(audio_file_path):
         raise Exception(f"Audio file not found: {audio_file_path}. Audio is required for video generation.")
     
@@ -476,6 +478,8 @@ def generate_video_with_audio(car_images, text_data, folder_name):
     
     return final_video_path
 
+
+
 def process_car_reel(image_urls, text_data):
     """Main function to process car reel with images and text"""
     # Validate input
@@ -485,42 +489,55 @@ def process_car_reel(image_urls, text_data):
     if not text_data:
         raise Exception("No text data provided")
     
-    # Create unique folder for this request
-    folder_name = f"car_images_{uuid.uuid4().hex[:8]}"
-    os.makedirs(folder_name, exist_ok=True)
+    # Create temporary folder for downloaded images
+    temp_folder = "temp_images"
+    os.makedirs(temp_folder, exist_ok=True)
     
-    # Download images
-    car_images = []
-    for i, url in enumerate(image_urls):
-        img_path = os.path.join(folder_name, f"car_{i}.png")
-        if download_image(url, img_path):
-            car_images.append(f"car_{i}.png")
-            print(f"✅ Downloaded image: {url}")
-        else:
-            print(f"❌ Failed to download image: {url}")
-    
-    if not car_images:
-        raise Exception("No images downloaded successfully")
-    
-    print(f"🎬 Generating video with {len(car_images)} images...")
-    
-    # Generate video with audio (AUDIO IS MANDATORY)
-    final_video_path = generate_video_with_audio(car_images, text_data, folder_name)
-    
-    # Cleanup downloaded images folder
-    if os.path.exists(folder_name):
-        shutil.rmtree(folder_name)
-    
-    # Get public URL for the video
-    video_filename = os.path.basename(final_video_path)
-    public_url = f"/videos/{video_filename}"
-    
-    return {
-        "status": "success", 
-        "message": "Video generated successfully with audio", 
-        "output_path": final_video_path,
-        "video_filename": video_filename,
-        "download_url": public_url,
-        "images_processed": len(car_images),
-        "text_used": text_data
-    }
+    try:
+        # Download images
+        car_images = []
+        for i, url in enumerate(image_urls):
+            img_path = os.path.join(temp_folder, f"car_{i}.png")
+            if download_image(url, img_path):
+                car_images.append(f"car_{i}.png")
+                print(f"✅ Downloaded image: {url}")
+            else:
+                print(f"❌ Failed to download image: {url}")
+        
+        if not car_images:
+            raise Exception("No images downloaded successfully")
+        
+        print(f"🎬 Generating video with {len(car_images)} images...")
+        
+        # Generate video with audio (AUDIO IS MANDATORY)
+        final_video_path = generate_video_with_audio(car_images, text_data, temp_folder)
+        
+        # Upload to S3
+        print("📤 Uploading video to S3...")
+        s3_url = upload_video_to_s3(final_video_path, "ai_videos")
+        
+        # Cleanup local video file after upload
+        if os.path.exists(final_video_path):
+            os.remove(final_video_path)
+        
+        return {
+            "status": "success", 
+            "message": "Video generated and uploaded to S3 successfully", 
+            "s3_url": s3_url,
+            "images_processed": len(car_images),
+            "text_used": text_data
+        }
+        
+    finally:
+        # Cleanup temporary images folder
+        if os.path.exists(temp_folder):
+            shutil.rmtree(temp_folder)
+
+
+# data = process_car_reel(["https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png","https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png","https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png","https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png","https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png","https://optifo-test.s3.eu-west-2.amazonaws.com/removebg/Unknown1.png"],["Toyota Aygo 1,0 VVT-i x-cite 5d 2016",
+#             "Pris: 59.900",
+#             "Kan finansieres fra 1.048kr/mdr - uden udbetaling!",
+#             "Ring / SMS for mere info og tid til fremvisning",
+#             "MQM Biler ApS"])
+
+# print(data)
