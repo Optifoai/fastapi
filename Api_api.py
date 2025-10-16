@@ -163,102 +163,6 @@ async def process_images(car_image: UploadFile = File(...), logo_image: UploadFi
         return Response(content=str(e), status_code=500)
 
 
-
-os.makedirs("temp_files", exist_ok=True)
-os.makedirs("generated_videos", exist_ok=True)
-
-# Serve videos for download
-app.mount("/videos", StaticFiles(directory="generated_videos"), name="videos")
-
-class VideoRequest(BaseModel):
-    car_image_urls: List[str]
-
-@app.post("/generate_video")
-async def generate_video(request: VideoRequest):
-    temp_folder = f"temp_files/{uuid.uuid4().hex[:8]}"
-    os.makedirs(temp_folder, exist_ok=True)
-    
-    image_paths = []
-    
-    try:
-        # Download car images from URLs
-        for i, img_url in enumerate(request.car_image_urls):
-            # Extract file extension
-            img_extension = os.path.splitext(img_url.split('?')[0])[1] or ".jpg"
-            image_path = os.path.join(temp_folder, f"car_image_{i}{img_extension}")
-            
-            try:
-                # Add headers for S3 URLs
-                headers = {}
-                if 's3.amazonaws.com' in img_url:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                
-                r = requests.get(img_url, stream=True, timeout=30, headers=headers)
-                r.raise_for_status()
-                
-                with open(image_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                image_paths.append(image_path)
-                print(f"✅ Downloaded: {image_path}")
-                
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Failed to download image {img_url}: {str(e)}")
-
-        # Generate video
-        if not image_paths:
-            raise HTTPException(status_code=400, detail="No images were successfully downloaded")
-        
-        # Call main function with downloaded images
-        # Note: Make sure background.mp4 and LoveDays.ttf are in your deployment
-        video_path = main(
-            car_image_list=image_paths,
-            background_video_path="background.mp4",  # This should be in your deployment
-            font_path="LoveDays.ttf"  # This should be in your deployment
-        )
-        
-        # Extract filename for download URL
-        video_filename = os.path.basename(video_path)
-        download_url = f"/videos/{video_filename}"
-
-        response = {
-            "message": "✅ Video generated successfully.",
-            "video_path": video_path,
-            "download_url": download_url,
-            "filename": video_filename
-        }
-        return response
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Video generation failed: {str(e)}")
-
-    finally:
-        # Clean up downloaded images
-        if os.path.exists(temp_folder):
-            shutil.rmtree(temp_folder, ignore_errors=True)
-            print(f"🧹 Cleaned up temporary folder: {temp_folder}")
-
-# Direct download endpoint
-@app.get("/download_video/{filename}")
-async def download_video(filename: str):
-    video_path = os.path.join("generated_videos", filename)
-    
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    return FileResponse(
-        video_path, 
-        media_type='video/mp4',
-        filename=filename
-    )
-
-@app.get("/")
-async def root():
-    return {"message": "Video Generation API is running!"}
-
-
-app.mount("/public", StaticFiles(directory="public"), name="public")
-
 class CarRequest(BaseModel):
     image_urls: List[str]
     text_data: List[str]
@@ -273,73 +177,15 @@ async def generate_reel(car_request: CarRequest):
         return result
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating video: {str(e)}")
-
-@app.post("/generate-reel-with-default-text")
-async def generate_reel_default_text(image_urls: List[str]):
-    """
-    Generate reel with default text captions
-    """
-    try:
-        # Default text data
-        default_text = [
-            'Toyota Aygo 1,0 VVT-i x-cite 5d 2016',
-            'Pris: 59.900',
-            'Kan finansieres fra 1.048kr/mdr - uden udbetaling!',
-            'Ring / SMS for mere info og tid til fremvisning',
-            'MQM Biler ApS'
-        ]
-        
-        result = process_car_reel(image_urls, default_text)
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating video: {str(e)}")
-
-@app.get("/download/{filename}")
-async def download_video(filename: str):
-    """
-    Download generated video by filename
-    """
-    video_path = os.path.join("public/videos", filename)
+        # raise HTTPException(status_code=500, detail=f"Error generating video: {str(e)}")
+        return {
+            "status": "Failed", 
+            "message": "unable to generate video", 
+            "s3_url": "",
+            "images_processed": "",
+            "text_used": ""
+        }
     
-    if not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    return FileResponse(
-        video_path, 
-        media_type='video/mp4',
-        filename=filename
-    )
-@app.post("/generate-reel-with-default-text")
-async def generate_reel_default_text(image_urls: List[str]):
-    """
-    Generate reel with default text captions
-    """
-    try:
-        # Default text data
-        default_text = [
-            'Toyota Aygo 1,0 VVT-i x-cite 5d 2016',
-            'Pris: 59.900',
-            'Kan finansieres fra 1.048kr/mdr - uden udbetaling!',
-            'Ring / SMS for mere info og tid til fremvisning',
-            'MQM Biler ApS'
-        ]
-        
-        result = process_car_reel(image_urls, default_text)
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating video: {str(e)}")
-
-@app.get("/")
-async def root():
-    return {"message": "Car Reel Generator API", "status": "running"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "car_reel_generator"}
-
 
 # Run FastAPI
 if __name__ == "__main__":
