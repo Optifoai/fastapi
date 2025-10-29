@@ -177,15 +177,7 @@ async def generate_reel(car_request: CarRequest):
         return result
         
     except Exception as e:
-        # raise HTTPException(status_code=500, detail=f"Error generating video: {str(e)}")
-        return {
-            "status": "Failed", 
-            "message": "unable to generate video", 
-            "s3_url": "",
-            "images_processed": "",
-            "text_used": ""
-        }
-    
+       return Response(content=str(e), status_code=500)
 
 # Run FastAPI
 if __name__ == "__main__":
