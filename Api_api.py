@@ -5,17 +5,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import numpy as np
 import cv2
-from insta import main
-import os
 from ultralytics import YOLO
 from skimage import measure
 from io import BytesIO
 from fastapi.responses import StreamingResponse
 from typing import List
-import shutil
-import requests
-import uuid
-from main_video import process_car_reel
+from ai_video.main_video import process_car_reel
 
 app = FastAPI()
 
@@ -167,7 +162,7 @@ class CarRequest(BaseModel):
     image_urls: List[str]
     text_data: List[str]
 
-@app.post("/generate-reel")
+@app.post("/generate-ai-video")
 async def generate_reel(car_request: CarRequest):
     """
     Generate Instagram reel with car images and text captions
