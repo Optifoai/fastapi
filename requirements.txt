@@ -6,3 +6,5 @@ pillow
 ultralytics
 scikit-image
 uvicorn
+rembg
+onnxruntime
