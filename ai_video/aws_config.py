@@ -42,6 +42,30 @@ def upload_video_to_s3(file_path, s3_folder="ai_videos"):
         return "Credentials not available"
 
 
+
+
+def upload_image_bytes_to_s3(file_bytes, filename, s3_folder="remove_image"):
+    try:
+        s3_key = f"{s3_folder}/{filename}"
+
+        # Upload bytes instead of file path
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=s3_key,
+            Body=file_bytes,
+            ACL='public-read',       # make file downloadable
+            ContentType="image/png"  # result is always PNG
+        )
+
+        # public URL
+        file_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{s3_key}"
+        return file_url
+
+    except NoCredentialsError:
+        return "Credentials not available"
+    except Exception as e:
+        return str(e)
+
 # video_path = "video_bg.mp4"
 # video_url= upload_video_to_s3(video_path)
 

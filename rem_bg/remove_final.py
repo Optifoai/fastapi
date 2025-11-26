@@ -6,8 +6,8 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import csv
-
-
+from ai_video.aws_config import upload_image_bytes_to_s3
+import shutil
 def remove_bg_car_shadow(image_path, output_path,
                          feather=3, shadow_gamma=1.5, shadow_darkening=0.75,
                          crop=True, padding=20):
@@ -56,30 +56,30 @@ def remove_bg_car_shadow(image_path, output_path,
             h = min(h + padding * 2, result.shape[0] - y)
             result = result[y:y+h, x:x+w]
 
-    cv2.imwrite(output_path, result)
-    return True, "Success"
+    success, encoded_img = cv2.imencode(".png", result)
+    
+    if not success:
+        return False, None
+
+    return True, encoded_img.tobytes()
 
 
 def process_file(args):
     """Wrapper for multiprocessing."""
     image_path, output_path, params = args
-    status, msg = remove_bg_car_shadow(image_path, output_path, **params)
-    return (os.path.basename(image_path), status, msg)
+    status, output= remove_bg_car_shadow(image_path, output_path, **params)
+    return (os.path.basename(image_path), status, output)
 
 
-def batch_process_cars(
-    input_folder, output_folder,
+def batch_process_uploaded_images(
+    uploaded_files,
     feather=3, shadow_gamma=1.5, shadow_darkening=0.75,
-    crop=True, padding=20, max_workers=None,
-    log_file="processing_log.csv"
+    crop=True, padding=20, max_workers=None
 ):
-    os.makedirs(output_folder, exist_ok=True)
+    if not uploaded_files:
+        return []
 
     supported_ext = (".jpg", ".jpeg", ".png", ".webp", ".tiff")
-    files = [f for f in os.listdir(input_folder) if f.lower().endswith(supported_ext)]
-    if not files:
-        print("⚠️ No images found.")
-        return
 
     params = dict(
         feather=feather,
@@ -89,38 +89,50 @@ def batch_process_cars(
         padding=padding
     )
 
-    args_list = [
-        (
-            os.path.join(input_folder, filename),
-            os.path.join(output_folder, os.path.splitext(filename)[0] + "_refined.png"),
-            params
-        )
-        for filename in files
-    ]
+    args_list = []
+
+    temp_folder = "temp_uploads"
+    os.makedirs(temp_folder, exist_ok=True)
+
+    # ---- Save uploaded files to temporary local storage ----
+    for file in uploaded_files:
+        filename = file.filename
+        
+        if not filename.lower().endswith(supported_ext):
+            continue
+        
+        temp_path = os.path.join(temp_folder, filename)
+        with open(temp_path, "wb") as f:
+            f.write(file.file.read())
+
+        args_list.append((temp_path, None, params))
 
     results = []
-
+    
+    # ---- Process images with multiprocessing ----
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for res in tqdm(executor.map(process_file, args_list), total=len(args_list), desc="Processing Cars"):
-            results.append(res)
+        for filename, status, img_data in tqdm(executor.map(process_file, args_list), total=len(args_list)):
+            
+            if not status:
+                results.append({
+                    "file": filename,
+                    "status": "Failed",
+                    "url": None
+                })
+                continue
+            file_bytes = img_data
 
-    # Logging CSV
-    with open(os.path.join(output_folder, log_file), mode="w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Filename", "Status", "Message"])
-        for filename, status, msg in results:
-            writer.writerow([filename, "Success" if status else "Failed", msg])
+            # ---- Upload to S3 ----
+            object_key = f"processed/{os.path.splitext(filename)[0]}_refined.png"
+            url = upload_image_bytes_to_s3(file_bytes, object_key)
+            
+            results.append({
+                "file": filename,
+                "status": "Success",
+                "url": url
+            })
 
-    print(f"\n🎯 Batch processing completed.")
-    print(f"📄 Log saved at: {os.path.join(output_folder, log_file)}")
+    if os.path.exists(temp_folder):
+        shutil.rmtree(temp_folder)
 
-
-# Example usage
-batch_process_cars(
-    input_folder="input_cars",
-    output_folder="output_cars",
-    feather=3, shadow_gamma=1.6, shadow_darkening=0.7,
-    crop=True, padding=30,
-    max_workers=None,     # None = auto use all CPU cores
-    log_file="car_shadow_log.csv"
-)
+    return results

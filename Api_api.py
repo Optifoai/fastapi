@@ -13,6 +13,8 @@ from typing import List
 from ai_video.main_video import process_car_reel
 import shutil
 import requests
+from fastapi.responses import JSONResponse
+from rem_bg.remove_final import batch_process_uploaded_images
 import uuid
 from rembg import remove
 from PIL import Image
@@ -195,8 +197,35 @@ async def remove_background(file: UploadFile = File(...)):
 
     # Return the image as a response with transparent background
     return Response(content=output_buffer.getvalue(), media_type="image/png")
+    
+@app.post("/remove_bg")
+async def upload_images(files: List[UploadFile] = File(...)):
+    """
+    Accepts multiple images and processes them using batch_process_uploaded_images.
+    Returns downloadable S3 links for each processed image.
+    """
+    try:
+        if not files:
+            return JSONResponse({"error": "No files uploaded"}, status_code=400)
 
+        # Convert async UploadFile to normal file object
+        uploaded_files = []
+        for f in files:
+            file_bytes = await f.read()
+            uploaded_files.append(
+                type("FileObject", (), {"filename": f.filename, "file": type("Stream", (), {"read": lambda self=file_bytes: self})})
+            )
+        result = batch_process_uploaded_images(uploaded_files)
+        return {
+            "total_images": len(files),
+            "processed": len(result),
+            "results": result
+        }
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 # Run FastAPI
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Api_api:app", host="0.0.0.0", port=8000)
+    
